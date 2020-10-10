@@ -328,7 +328,7 @@ def penColor(pens, pen):
     else:
         return (0.,0.,0.)
 
-def emitGcode(data, pens = {}, plotter=Plotter(), scalingMode=SCALE_NONE, align = None, tolerance=0, gcodePause="@pause", pauseAtStart = False, simulation = False):
+def emitGcode(data, pens = {}, plotter=Plotter(), scalingMode=SCALE_NONE, align = None, tolerance=0, gcodePause="@pause", pauseAtStart = False, simulation = False, doflip=True):
     if len(data) == 0:
         return None
 
@@ -419,7 +419,9 @@ def emitGcode(data, pens = {}, plotter=Plotter(), scalingMode=SCALE_NONE, align 
 
     def penMove(down, speed, p, force=False):
         def flip(y):
-            return plotter.xyMax[1] - (y-plotter.xyMin[1])
+            if doflip:
+                return plotter.xyMax[1] - (y-plotter.xyMin[1])
+            return y
         if state.curXY is None:
             d = float("inf")
         else:
@@ -576,9 +578,9 @@ def getPen(pens, color):
 
     return bestPen
 
-def parseSVG(svgTree, tolerance=0.05, shader=None, strokeAll=False, pens=None, extractColor = None):
+def parseSVG(svgTree, tolerance=0.05, shader=None, strokeAll=False, pens=None, extractColor = None, doflip=True):
     data = {}
-    for path in parser.getPathsFromSVG(svgTree)[0]:
+    for path in parser.getPathsFromSVG(svgTree, doflip)[0]:
         lines = []
 
         stroke = strokeAll or (path.svgState.stroke is not None and (extractColor is None or isSameColor(path.svgState.stroke, extractColor)))
@@ -771,11 +773,13 @@ if __name__ == '__main__':
     comment = ";"
     sendAndSave = False
     directionAngle = None
+    doflip = True
     
     def maybeNone(a):
         return None if a=='none' else a
 
     try:
+        print(sys.argv[1:], file=sys.stderr)
         opts, args = getopt.getopt(sys.argv[1:], "e:UR:Uhdulw:P:o:Oc:LT:M:m:A:XHrf:na:D:t:s:S:x:y:z:Z:p:f:F:",
                         ["help", "down", "up", "lower-left", "allow-repeats", "no-allow-repeats", "scale=", "config-file=",
                         "area=", 'align-x=', 'align-y=', 'optimization-time=', "pens=",
@@ -785,7 +789,7 @@ if __name__ == '__main__':
                         'pause-at-start', 'no-pause-at-start', 'min-x=', 'max-x=', 'min-y=', 'max-y=',
                         'no-shading-avoid-outline', 'shading-darkest=', 'shading-lightest=', 'stroke-all', 'no-stroke-all', 'gcode-pause', 'dump-options', 'tab=', 'extract-color=', 'sort', 'no-sort', 'simulation', 'no-simulation', 'tool-offset=', 'overcut=',
                         'boolean-shading-crosshatch=', 'boolean-sort=', 'tool-mode=', 'send-and-save=', 'direction=', 'lift-command=', 'down-command=',
-                        'init-code=', 'comment-delimiters=', 'end-code=' ], )
+                        'init-code=', 'comment-delimiters=', 'end-code=', 'flip', 'no-flip', 'boolean-flip=' ], )
 
         if len(args) + len(opts) == 0:
             raise getopt.GetoptError("invalid commandline")
@@ -965,6 +969,12 @@ if __name__ == '__main__':
                 plotter.endCode = maybeNone(arg)
             elif opt == '--comment-delimiters':
                 plotter.comment = maybeNone(arg)
+            elif opt == '--flip':
+                doflip = True
+            elif opt == '--no-flip':
+                doflip = False
+            elif opt == '--boolean-flip':
+                doflip = arg.strip() != 'false'
             else:
                 raise ValueError("Unrecognized argument "+opt)
             i += 1
@@ -1087,7 +1097,7 @@ if __name__ == '__main__':
 
     shader.setDrawingDirectionAngle(directionAngle)
     if svgTree is not None:
-        penData = parseSVG(svgTree, tolerance=tolerance, shader=shader, strokeAll=strokeAll, pens=pens, extractColor=extractColor)
+        penData = parseSVG(svgTree, tolerance=tolerance, shader=shader, strokeAll=strokeAll, pens=pens, extractColor=extractColor, doflip=doflip)
     else:
         penData = parseHPGL(data, dpi=dpi)
     penData = removePenBob(penData)
@@ -1126,7 +1136,7 @@ if __name__ == '__main__':
         g = emitHPGL(penData, pens=pens)
     else:
         g = emitGcode(penData, align=align, scalingMode=scalingMode, tolerance=tolerance,
-                plotter=plotter, gcodePause=gcodePause, pens=pens, pauseAtStart=pauseAtStart, simulation=svgSimulation)
+                plotter=plotter, gcodePause=gcodePause, pens=pens, pauseAtStart=pauseAtStart, simulation=svgSimulation, doflip=doflip)
 
     if g:
         dump = True
